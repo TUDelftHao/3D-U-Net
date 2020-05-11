@@ -1,0 +1,6 @@
+__pycache__/
+best/
+model/
+temp_plot/
+train_data/
+*.log

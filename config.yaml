@@ -1,0 +1,25 @@
+PATH:
+  data_root: '/home/emc17673/src/'
+  data_class: 'MICCAI_BraTS_2018_Data_Training' 
+  root: ''
+  model_path: 'model'
+  best_model_path: 'best'
+  TensorBoard: 'Summary'
+  log_file: 'file.log'
+
+
+PARAMETERS:
+  # model structure
+  input_modalites: 4
+  output_channels: 4
+  base_channels: 8
+  labels: [0, 1, 2, 4]
+  crop_size: 128
+
+  # model training
+  is_best: False
+  epoch: 10
+  batch_size: 6
+  resume: True
+  patience: 5
+  
