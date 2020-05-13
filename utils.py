@@ -20,7 +20,7 @@ def logfile(path, level='debug'):
     if os.path.exists(path):
         os.remove(path)
         
-    # set up log    file
+    # set up log file
 
     logger = logging.getLogger(__name__)
     if level == 'debug':
@@ -253,43 +253,6 @@ def loss_plot(train_info_file, name):
     plt.savefig(os.path.join(os.path.dirname(train_info_file), '{}_loss_acc_plot.png'.format(name)))
     # plt.show()
 
-def heatmap_plot_pred(image, mask, pred, epoch, name, save=True):
-
-    warnings.filterwarnings("ignore")
-    # plt.cla()
-
-    current_path = os.getcwd()
-    plot_dir = os.path.join(current_path, 'pre_temp_plot', name)
-    if not os.path.exists(plot_dir):
-        os.makedirs(plot_dir)
-
-    size = image.shape[2]
- 
-    ax1 = plt.subplot(1,6,1)
-    ax1.axis('off')
-    ax1.imshow(image[0, size//2])
-    
-    ax2 = plt.subplot(1,6,2)
-    sns.heatmap(mask[0, size//2], vmin=0, vmax=3, xticklabels=False, yticklabels=False, square=True, cmap='coolwarm', cbar=False)
-    
-    ax3 = plt.subplot(1,6,3)
-    sns.heatmap(pred[0, 0, size//2], vmin=0, vmax=1, xticklabels=False, yticklabels=False,square=True, cmap='coolwarm', cbar=False)
-    
-    ax4 = plt.subplot(1,6,4)
-    sns.heatmap(pred[0, 1, size//2], vmin=0, vmax=1, xticklabels=False, yticklabels=False,square=True, cmap='coolwarm', cbar=False)
-    
-    ax5 = plt.subplot(1,6,5)
-    sns.heatmap(pred[0, 2, size//2], vmin=0, vmax=1, xticklabels=False, yticklabels=False,square=True, cmap='coolwarm', cbar=False)
-    
-    ax6 = plt.subplot(1,6,6)
-    sns.heatmap(pred[0, 3, size//2], vmin=0, vmax=1, xticklabels=False, yticklabels=False,square=True, cmap='coolwarm', cbar=False)
-
-    if save:
-        current_time = time.strftime("%Y-%m-%d-%H-%M-%S", time.localtime())
-        plot_name = os.path.join(plot_dir, '{}-epoch-{}_{}.png'.format(name, epoch, current_time))
-        plt.savefig(plot_name)
-
-    # plt.show()
 
 def heatmap_plot(image, mask, pred, epoch, name, save=True):
     # image, mask, pred should be numpy.array()
@@ -299,7 +262,6 @@ def heatmap_plot(image, mask, pred, epoch, name, save=True):
     current_path = os.getcwd()
     plot_dir = os.path.join(current_path, 'temp_plot', name)
     if not os.path.exists(plot_dir):
-        # os.mkdir(plot_dir)
         os.makedirs(plot_dir)
 
     size = image.shape[2]
@@ -323,7 +285,6 @@ def heatmap_plot(image, mask, pred, epoch, name, save=True):
     ax6 = plt.subplot(2,6,6)
     sns.heatmap(pred[0, 3, size//2], vmin=0, vmax=1, xticklabels=False, yticklabels=False,square=True, cmap='coolwarm', cbar=False)
     
-
 
     ax7 = plt.subplot(2,6,7)
     plt.axis('off')
@@ -361,105 +322,10 @@ def count_params(model):
     print('Model {} : params number {}, params size: {:4f}M'.format(model._get_name(), num_of_param, num_of_param*4/1000/1000))
 
 
-def seg_conversion(InputFile, OutputFile):
-    
-    ''' convert segmentation file to our usecase '''
-
-    image = sitk.ReadImage(InputFile)
-    image_np = sitk.GetArrayFromImage(image)
-    seg_new = np.zeros_like(image_np)
-    seg_new[image_np==4] = 3
-    seg_new[image_np==2] = 1
-    seg_new[image_np==1] = 2
-    img_new = sitk.GetImageFromArray(seg_new)
-    img_new.CopyInformation(image)
-    sitk.WriteImage(img_new, OutputFile)
-
-def modalites_conversion():
-
-    ''' copy original images to a new folder and convert their name '''
-
-    # build up new target dataset
-    target_dataset = os.path.join(ROOT, 'dataset'+'\\'+data_class)
-    if not os.path.exists(target_dataset):
-        os.makedirs(target_dataset)
-
-    # build up sub dir to store images and labels, respectively
-
-    ImageFolder = os.path.join(target_dataset, 'Images')
-    if not os.path.exists(ImageFolder):
-        os.mkdir(ImageFolder)
-    LableFolder = os.path.join(target_dataset, 'Labels')
-    if not os.path.exists(LableFolder):
-        os.mkdir(LableFolder)
-
-    # copy and rename original dataset to target dataset
-    task = os.path.join(data_root, data_class)
-
-    patient_newNames = []
-    for sub_task in ['LGG', 'HGG']:
-        sub_task_path = os.path.join(task, sub_task)
-
-        print('{} folder is in process ...'.format(sub_task))
-
-        for patient in os.listdir(sub_task_path):
-            patient_path = os.path.join(sub_task_path, patient)
-            patient_newName = sub_task + '_' + patient
-            patient_newNames.append(patient_newName)
-
-            modalities = ['_t1.nii.gz', '_t1ce.nii.gz', '_flair.nii.gz', '_t2.nii.gz']
-
-            for modality in modalities:
-                image_mode = os.path.join(patient_path, patient+modality)
-                
-                assert os.path.isfile(image_mode), '%s' %patient
-
-                shutil.copyfile(image_mode, os.path.join(ImageFolder, patient_newName+modality))
-
-            original_seg = os.path.join(patient_path, patient+'_seg.nii.gz')
-            target_seg = os.path.join(LableFolder, patient_newName+'_seg.nii.gz')
-            seg_conversion(original_seg, target_seg)
-    
-    json_dict = OrderedDict()
-    json_dict['name'] = 'BraTS_2018'
-    json_dict['release'] = "0.0"
-    json_dict['modality'] = {
-        "0": "T1",
-        "1": "T1ce",
-        "2": "T2",
-        "3": "FLAIR"
-    }
-    json_dict['labels'] = {
-        "0": "background",
-        "1": "edema",
-        "2": "non-enhancing",
-        "3": "enhancing",
-    }
-    json_dict['numTraining'] = len(patient_newNames)
-
-    with open('%s\\data.json' %target_dataset, 'w') as f:
-        json.dump(json_dict, f)
-
-    print('Data transferring finished!')
-
 
 
 if __name__ == '__main__':
-    cfg = load_config('config.yaml')
-    data_root = cfg['PATH']['data_root'] # F:\\TU Delft\\thesis\\sample_images
-    data_class = cfg['PATH']['data_class'] # MICCAI_BraTS_2018_Data_Training
-    ROOT = cfg['PATH']['root'] # E:\\VSpythonCode\\Deep_Learning\\U-Net
-
-    
-    # train_info = {'train_loss':np.random.random(10), 
-    #             'val_loss':np.random.random(10),
-    #             'BG_acc':np.random.random(10),
-    #             'NET_acc':np.random.random(10),
-    #             'ED_acc':np.random.random(10),
-    #             'ET_acc':np.random.random(10)}
-    # file_path = 'E:\\VSpythonCode\\Deep_Learning\\U-Net\\modeldata\\train_info_2020-04-21-21-22-43.json'
-    
-    # loss_plot(file_path)  
+    pass
     
    
 
