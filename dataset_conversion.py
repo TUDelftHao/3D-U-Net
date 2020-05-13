@@ -232,8 +232,7 @@ class RandomContrast:
         return {'image': adjusted_image, 'seg':seg}
 
         
-                
-
+            
 class RandomCrop:
 
     ''' randomly crop the patch to (crop_size, crop_size, crop_size) in xy plane'''
@@ -264,61 +263,6 @@ class RandomCrop:
         seg = seg[starts[-1]:starts[-1]+new_z, starts[-2]:starts[-2]+new_y, starts[-3]:starts[-3]+new_x]
 
         return {'image':image, 'seg':seg}
-
-
-class CropForEval:
-    def __init__(self, crop_size=98, overlap_size=30):
-
-        self.crop_size = crop_size
-        self.overlap_size = overlap_size
-        # self.random_state = GLOBAL_RANDOM_STATE
-
-        if self.overlap_size is None:
-            self.overlap_size = 0
-
-        assert self.overlap_size >= 0, 'overlap must be a non-negative value'
-        assert self.overlap_size < self.crop_size, 'overlap must be smaller than crop size'
-
-    def __call__(self, sample):
- 
-        image, seg = sample['image'], sample['seg']
-        image_shape = image.shape[-3:]
-
-        if isinstance(self.crop_size, int):
-            self.crop_size = np.asarray([self.crop_size]*len(image_shape))
-
-        if isinstance(self.overlap_size, int):
-            self.overlap_size = np.asarray([self.overlap_size]*len(image_shape))
-
-        num_block_per_dim = (image_shape - self.overlap_size) // (self.crop_size - self.overlap_size)
-
-        index_per_axis_dict = {}
-        for j, num in enumerate(num_block_per_dim):
-            initial_point_dim = [i*(self.crop_size[j]-self.overlap_size[j]) for i in range(num)]
-            initial_point_dim.append(image_shape[j]-self.crop_size[j])
-            index_per_axis_dict[j] = initial_point_dim
-
-        index_axis_z = index_per_axis_dict[0]
-        index_axis_y = index_per_axis_dict[1]
-        index_axis_x = index_per_axis_dict[2]
-        # index_array = np.zeros((num_start_index, 3))
-        index_array = []
-
-        for val_z in index_axis_z:
-            for val_y in index_axis_y:
-                for val_x in index_axis_x:
-                    index_array.append([val_z, val_y, val_x])
-
-        index_array = np.asarray(index_array).reshape(-1,3)
-     
-        idx = self.random_state.randint(0, index_array.shape[0])
-        # idx = np.random.randint(0, index_array.shape[0])
-
-        cropped_image = image[:, index_array[idx][0]:index_array[idx][0]+self.crop_size[0], index_array[idx][1]:index_array[idx][1]+self.crop_size[1], index_array[idx][2]:index_array[idx][2]+self.crop_size[2]]
-        cropped_seg = seg[index_array[idx][0]:index_array[idx][0]+self.crop_size[0], index_array[idx][1]:index_array[idx][1]+self.crop_size[1], index_array[idx][2]:index_array[idx][2]+self.crop_size[2]]
-
-
-        return {'image': cropped_image, 'seg': cropped_seg}
         
 
 class ToTensor:
@@ -394,7 +338,6 @@ class data_loader:
                 form='merge', 
                 crop_size=98, 
                 overlap_size=0, 
-                crop_method='random', 
                 batch_size=2,  
                 num_works=8, 
                 dataset=BraTSDataset):
@@ -405,7 +348,6 @@ class data_loader:
         params form: one of 'merge', 'HGG' and 'LGG'
         params crop_size: patch size, int or 3d list or tuple
         params overlap_size: cropping overlap between patches, only valid when crop_method is chosen as 'inorder'
-        params crop_method: the strategy to crop patches, one of 'random' or 'inorder'
         params batch_size: the number of input to be generated in each minibatch
         params num_works: the number of kernels used to load image simultanously, default to 0
         params dataset: instance of pytroch Dataset class
@@ -413,7 +355,6 @@ class data_loader:
 
         assert key in ('train', 'val'), 'key value must be "train" or "val"'
         assert form in ('merge', 'HGG', 'LGG'), 'data form must be "merge", "HGG" or "LGG"'
-        assert crop_method in ('random', 'inorder'), 'crop method should be "random" or "inorder"'
 
         self.key = key
         self.batch_size = batch_size
@@ -422,12 +363,7 @@ class data_loader:
         self.crop_size = crop_size
         self.overlap_size = overlap_size
         self.form = form
-        self.crop_method = crop_method
-
-        if self.crop_method == 'inorder':
-            self.crop_method = CropForEval(crop_size=self.crop_size, overlap_size=self.overlap_size)
-        else:
-            self.crop_method = RandomCrop(crop_size=self.crop_size)
+        self.crop_method = RandomCrop(crop_size=self.crop_size)
 
         self.df = data_obtain(data_content, key=self.key, form=self.form)
 
@@ -493,7 +429,7 @@ if __name__ == '__main__':
     #     print(image.shape)
     #     print(np.unique(seg))
 
-    data = data_loader(data_content, crop_size=98, batch_size=2, key='val', form='LGG', crop_method='random')
+    data = data_loader(data_content, crop_size=98, batch_size=2, key='val', form='LGG')
     
 
 
