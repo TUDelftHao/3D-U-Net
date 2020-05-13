@@ -5,8 +5,6 @@ import torchvision
 import numpy as np
 from blocks import simple_block, Down_sample, Up_sample
 from torchviz import make_dot
-import torch.autograd as autograd
-from torch.autograd import Variable
 from utils import count_params, load_config
 from torchsummary import summary
 
@@ -18,28 +16,27 @@ class init_U_Net(nn.Module):
                 input_modalites, 
                 output_channels, 
                 base_channel, 
-                softmax=True):
+                softmax = True):
 
         self.softmax = softmax
         super(init_U_Net, self).__init__()
 
         self.min_channel = base_channel
-        self.down_conv1  = simple_block(input_modalites, self.min_channel*2, 3)
-        self.down_sample_1 = Down_sample(2)
-        self.down_conv2  = simple_block(self.min_channel*2, self.min_channel*4, 3)
-        self.down_sample_2 = Down_sample(2)
-        self.down_conv3  = simple_block(self.min_channel*4, self.min_channel*8, 3,)
-        self.down_sample_3 = Down_sample(2)
+        self.down_conv1  = simple_block(input_modalites, self.min_channel*2, kernel_size=3)
+        self.down_sample_1 = Down_sample(kernel_size=2)
+        self.down_conv2  = simple_block(self.min_channel*2, self.min_channel*4, kernel_size=3)
+        self.down_sample_2 = Down_sample(kernel_size=2)
+        self.down_conv3  = simple_block(self.min_channel*4, self.min_channel*8, kernel_size=3)
+        self.down_sample_3 = Down_sample(kernel_size=2)
 
-        self.bridge = simple_block(self.min_channel*8, self.min_channel*16, 3)
+        self.bridge = simple_block(self.min_channel*8, self.min_channel*16, kernel_size=3)
         
-        self.up_sample_1   = Up_sample(self.min_channel*16, self.min_channel*16, 3) # change here to 3 if crop size is 128
-        self.up_conv1  = simple_block(self.min_channel*24, self.min_channel*8, 3, is_down=False)
-        self.up_sample_2   = Up_sample(self.min_channel*8, self.min_channel*8, 3)
-        # change here to 3 if crop size is 128
-        self.up_conv2  = simple_block(self.min_channel*12, self.min_channel*4, 3, is_down=False)
-        self.up_sample_3   = Up_sample(self.min_channel*4, self.min_channel*4, 2) 
-        self.up_conv3  = simple_block(self.min_channel*6, self.min_channel*2, 3, is_down=False)
+        self.up_sample_1 = Up_sample(self.min_channel*16, self.min_channel*16, kernel_size=2) 
+        self.up_conv1 = simple_block(self.min_channel*24, self.min_channel*8, kernel_size=3, is_down=False)
+        self.up_sample_2 = Up_sample(self.min_channel*8, self.min_channel*8, kernel_size=2)
+        self.up_conv2 = simple_block(self.min_channel*12, self.min_channel*4, kernel_size=3, is_down=False)
+        self.up_sample_3 = Up_sample(self.min_channel*4, self.min_channel*4, kernel_size=2) 
+        self.up_conv3 = simple_block(self.min_channel*6, self.min_channel*2, kernel_size=3, is_down=False)
 
         self.out = nn.Conv3d(self.min_channel*2, output_channels, kernel_size=1)
 
@@ -53,7 +50,6 @@ class init_U_Net(nn.Module):
     def forward(self, x):
 
         # encoder path
-
         self.block_1 = self.down_conv1(x)
         self.block_1_pool = self.down_sample_1(self.block_1)
         self.block_2 = self.down_conv2(self.block_1_pool)
@@ -65,7 +61,6 @@ class init_U_Net(nn.Module):
         self.block_4 = self.bridge(self.block_3_pool)
 
         # decoder path
-
         self.block_5_upsample = self.up_sample_1(self.block_4)
         self.concat = torch.cat([self.block_5_upsample, self.block_3], dim=1)
         self.block_5 = self.up_conv1(self.concat)
@@ -95,8 +90,7 @@ if __name__ == '__main__':
     net = init_U_Net(input_modalites, output_channels, base_channel)
     net.to(device)
 
-    # print(net)
-    print(net.block_4.shape)
+    print(net)
 
     # params = list(net.parameters())
     # for i in range(len(params)):
@@ -104,16 +98,12 @@ if __name__ == '__main__':
         
     #     print(len(layer_shape))
 
-    # print parameters infomation
-    # count_params(net)
     # input = torch.randn(2, 4, 98, 98, 98).to(device)
-    # input = torch.randn(1, 4, 128, 128, 128).to(device)
-    # y = net(input)
-    # print(y.shape)
-    # print(np.unique(y.detach().cpu().numpy()))
+    input = torch.randn(1, 4, 130, 130, 130).to(device)
+    y = net(input)
+
     # summary(net, input_size=(4, 98, 98, 98))
 
-    # count_intermidiate_size(model=net, input=input)
 
 
         
