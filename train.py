@@ -1,8 +1,8 @@
-from loss import DiceLoss
+from loss import DiceLoss, CrossEntropyLoss, FocalLoss, Dice_CE, Dice_FL
 from model import init_U_Net
 from dataset_conversion import BraTSDataset, data_loader, train_split
 from utils import load_config, save_ckp, load_ckp, logfile, loss_plot, heatmap_plot
-from metrics import dice_coe, softmax_output_dice
+from metrics import dice_coe
 import torch.optim as optim
 import torch 
 import os
@@ -24,6 +24,7 @@ def train(args):
 
     # user defined
     model_name = args.model_name 
+    model_loss_fn = args.loss_fn
 
     # config_file = 'U-Net\\config.yaml'
     config_file = 'config.yaml'
@@ -94,8 +95,8 @@ def train(args):
     n_total = n_train + n_val
     logger.info('{} images will be used in total, {} for trainning and {} for validation'.format(n_total, n_train, n_val))
     
-
     net = init_U_Net(input_modalites, output_channels, base_channel)
+    
 
     device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
     if torch.cuda.device_count() > 1:
@@ -104,7 +105,19 @@ def train(args):
 
     net.to(device)
 
-    criterion = DiceLoss(labels=labels)
+    if model_loss_fn == 'Dice':
+        criterion = DiceLoss(labels=labels)
+    elif model_loss_fn == 'CrossEntropy':
+        criterion = CrossEntropyLoss(labels=labels)
+    elif model_loss_fn == 'FocalLoss':
+        criterion = FocalLoss(labels=labels)
+    elif model_loss_fn == 'Dice_CE':
+        criterion = Dice_CE(labels=labels)
+    elif model_loss_fn == 'Dice_FL':
+        criterion = Dice_FL(labels=labels)
+    else:
+        raise NotImplementedError()
+
     optimizer = optim.Adam(net.parameters())
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, verbose=True, patience=patience)
 
@@ -181,12 +194,11 @@ def train(args):
 
                 global_step += 1
                 if global_step % nb_batches == 0:
-                    
                     # validate 
                     net.eval()
                     val_loss, val_acc = validation(net, val_set, criterion, device, batch_size)
                    
-        
+
         train_info['train_loss'].append(running_loss/nb_batches)
         train_info['val_loss'].append(val_loss)
         train_info['BG_acc'].append(dice_coeff_bg/nb_batches)
@@ -197,8 +209,8 @@ def train(args):
         # save bast trained model
         scheduler.step(running_loss / nb_batches)
 
-        if min_loss > running_loss / nb_batches:
-            min_loss = running_loss / nb_batches
+        if min_loss > val_loss:
+            min_loss = val_loss
             is_best = True
         else:
             is_best = False
@@ -214,8 +226,8 @@ def train(args):
         save_ckp(state, is_best, save_model_dir=model_path, best_dir=best_path, name=model_name)
             
         logger.info('The average training loss for this epoch is {}'.format(running_loss / (np.ceil(n_train/batch_size))))
-        logger.info('The best training loss till now is {}'.format(min_loss))
         logger.info('Validation dice loss: {}; Validation (avg) accuracy: {}'.format(val_loss, val_acc))
+        logger.info('The best validation loss till now is {}'.format(min_loss))
 
         # save the training info every epoch
         logger.info('Writing the training info into file ...')
@@ -228,7 +240,8 @@ def train(args):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('-name', '--model_name', default='baseline', type=str, help='model name')
+    parser.add_argument('-name', '--model_name', default='baseline_local', type=str, help='model name')
+    parser.add_argument('-loss', '--loss_fn', default='CrossEntropy', type=str, help='loss function, options: Dice, CrossEntropy, FocalLoss, Dice_CE, Dice_FL')
     args = parser.parse_args()
     train(args)
 
