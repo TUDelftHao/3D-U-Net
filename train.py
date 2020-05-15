@@ -16,6 +16,7 @@ import shutil
 import warnings
 import time
 import argparse
+from apex import amp 
 
 def train(args):
 
@@ -26,7 +27,6 @@ def train(args):
     model_name = args.model_name 
     model_loss_fn = args.loss_fn
 
-    # config_file = 'U-Net\\config.yaml'
     config_file = 'config.yaml'
 
     config = load_config(config_file)
@@ -35,7 +35,6 @@ def train(args):
     root_path = config['PATH']['root']
     model_dir = config['PATH']['model_path']
     best_dir = config['PATH']['best_model_path']
-    log_path = config['PATH']['log_file']
 
     data_class = config['PATH']['data_class']
     input_modalites = int(config['PARAMETERS']['input_modalites'])
@@ -47,14 +46,15 @@ def train(args):
     is_best = bool(config['PARAMETERS']['is_best'])
     is_resume = bool(config['PARAMETERS']['resume'])
     patience = int(config['PARAMETERS']['patience'])
-
-
-    logger = logfile(log_path)
+    ignore_idx = int(config['PARAMETERS']['ignore_index'])
+    early_stop_patience = int(config['PARAMETERS']['early_stop_patience'])
+    
     # build up dirs
     model_path = os.path.join(root_path, model_dir)
     best_path = os.path.join(root_path, best_dir)
     intermidiate_data_save = os.path.join(root_path, 'train_data', model_name)
     train_info_file = os.path.join(intermidiate_data_save, '{}_train_info.json'.format(model_name))
+    log_path = os.path.join(root_path, 'logfiles')
 
     if not os.path.exists(model_path):
         os.mkdir(model_path)
@@ -62,8 +62,11 @@ def train(args):
         os.mkdir(best_path)
     if not os.path.exists(intermidiate_data_save):
         os.makedirs(intermidiate_data_save)
+    if not os.path.exists(log_path):
+        os.mkdir(log_path)
 
-    
+    log_name = model_name + '_' + config['PATH']['log_file']
+    logger = logfile(os.path.join(log_path, log_name))
     logger.info('Dataset is loading ...')
     # split dataset
     dir_ = os.path.join(data_root, data_class)
@@ -106,22 +109,25 @@ def train(args):
     net.to(device)
 
     if model_loss_fn == 'Dice':
-        criterion = DiceLoss(labels=labels)
+        criterion = DiceLoss(labels=labels, ignore_index=ignore_idx)
     elif model_loss_fn == 'CrossEntropy':
-        criterion = CrossEntropyLoss(labels=labels)
+        criterion = CrossEntropyLoss(labels=labels, ignore_index=ignore_idx)
     elif model_loss_fn == 'FocalLoss':
-        criterion = FocalLoss(labels=labels)
+        criterion = FocalLoss(labels=labels, ignore_index=ignore_idx)
     elif model_loss_fn == 'Dice_CE':
-        criterion = Dice_CE(labels=labels)
+        criterion = Dice_CE(labels=labels, ignore_index=ignore_idx)
     elif model_loss_fn == 'Dice_FL':
-        criterion = Dice_FL(labels=labels)
+        criterion = Dice_FL(labels=labels, ignore_index=ignore_idx)
     else:
         raise NotImplementedError()
 
-    optimizer = optim.Adam(net.parameters())
+    optimizer = optim.Adam(net.parameters(), lr=1e-4, weight_decay=1e-5)
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, verbose=True, patience=patience)
 
+    net, optimizer = amp.initialize(net, optimizer, opt_level='O1')
+
     min_loss = float('Inf')
+    early_stop_count = 0
     global_step = 0
     start_epoch = 0
     start_loss = 0
@@ -171,7 +177,10 @@ def train(args):
                 outputs = net(images)
 
                 loss = criterion(outputs, segs)
-                loss.backward()
+                # loss.backward()
+                with amp.scale_loss(loss, optimizer) as scaled_loss:
+                    scaled_loss.backward()
+                
                 optimizer.step()
 
                 # save the output at the begining of each epoch to visulize it
@@ -212,8 +221,10 @@ def train(args):
         if min_loss > val_loss:
             min_loss = val_loss
             is_best = True
+            early_stop_count = 0
         else:
             is_best = False
+            early_stop_count += 1
 
         state = {
             'epoch': epoch+1,
@@ -223,7 +234,7 @@ def train(args):
             'loss':running_loss / nb_batches,
             'min_loss': min_loss
         }
-        save_ckp(state, is_best, save_model_dir=model_path, best_dir=best_path, name=model_name)
+        verbose = save_ckp(state, is_best, early_stop_count=early_stop_count, early_stop_patience=early_stop_patience, save_model_dir=model_path, best_dir=best_path, name=model_name)
             
         logger.info('The average training loss for this epoch is {}'.format(running_loss / (np.ceil(n_train/batch_size))))
         logger.info('Validation dice loss: {}; Validation (avg) accuracy: {}'.format(val_loss, val_acc))
@@ -236,11 +247,15 @@ def train(args):
     
         loss_plot(train_info_file, name=model_name)
 
+        if verbose:
+            logger.info('The validation loss has not improved for {} epochs, training will stop here.'.format(early_stop_patience))
+            break
+
     logger.info('finish training!')
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('-name', '--model_name', default='baseline_local', type=str, help='model name')
+    parser.add_argument('-name', '--model_name', default='baseline', type=str, help='model name')
     parser.add_argument('-loss', '--loss_fn', default='CrossEntropy', type=str, help='loss function, options: Dice, CrossEntropy, FocalLoss, Dice_CE, Dice_FL')
     args = parser.parse_args()
     train(args)
