@@ -286,15 +286,7 @@ class Normalize:
 
         for i in range(image.shape[0]):
             img = np.asarray(image[i], dtype='float_')
-            nonzero_mask = img[np.nonzero(img)]
-
-            if len(nonzero_mask) != 0:
-                img -= nonzero_mask.mean()
-                img /= (nonzero_mask.std()+1e-5) 
-            else:
-                img -= img.mean()
-                img /= img.std()+1e-5
-
+            img = (img - img.mean())/(img.std()+1e-5)
             image[i, ...] = img 
 
         return {'image':image, 'seg':seg}
