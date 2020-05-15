@@ -15,12 +15,16 @@ import time
 import seaborn as sns
 import warnings
 
+
+###############
+### general ###
+###############
+
 def logfile(path, level='debug'):
-    
-    if os.path.exists(path):
-        os.remove(path)
         
     # set up log file
+    if os.path.exists(path):
+        os.remove(path)
 
     logger = logging.getLogger(__name__)
     if level == 'debug':
@@ -42,7 +46,38 @@ def logfile(path, level='debug'):
 
     return logger
 
+def load_config(file_path):
+    return yaml.safe_load(open(file_path, 'r'))
 
+def save_ckp(state, is_best, early_stop_count, early_stop_patience, save_model_dir, best_dir, name):
+
+    ''' update the model state; if best validation loss acchieves, copy the mode state to best folder; if the early stop patice reaches, stop training '''
+
+    f_path = os.path.join(save_model_dir, '{}_model_ckp.pth.tar'.format(name))
+    torch.save(state, f_path)
+    verbose = False
+
+    if is_best:
+        best_path = os.path.join(best_dir, '{}_best_model.pth.tar'.format(name))
+        shutil.copyfile(f_path, best_path)
+    if early_stop_count == early_stop_patience:
+        verbose = True
+    
+    return verbose
+
+def load_ckp(checkpoint_fpath, model, optimizer, scheduler):
+    checkpoint = torch.load(checkpoint_fpath)
+    model.load_state_dict(checkpoint['model_state_dict'])
+    optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+    scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
+
+    return model, optimizer, scheduler, checkpoint['epoch'], checkpoint['min_loss'], checkpoint['loss']
+
+
+
+#################
+### inference ###
+#################
 def image_rebuild(crop_index_array, cropped_image_list):
 
     '''
@@ -83,7 +118,7 @@ def image_rebuild(crop_index_array, cropped_image_list):
         total_mask_channel = total_mask[i, ...]
         total_mask_channel /= overlap_mask
 
-        total_mask_channel = np.where(total_mask_channel>0.8, 1, 0)
+        total_mask_channel = np.where(total_mask_channel>0.5, 1, 0)
         total_mask[i, ...] = total_mask_channel
 
 
@@ -177,40 +212,15 @@ def normalize(image):
 
     for i in range(image.shape[0]):
         img = np.asarray(image[i], dtype='float_')
-        nonzero_mask = img[np.nonzero(img)]
-
-        if len(nonzero_mask) != 0:
-            img -= nonzero_mask.mean()
-            img /= (nonzero_mask.std()+1e-5) 
-        else:
-            img -= img.mean()
-            img /= img.std()+1e-5
-
+        img = (img - img.mean())/(img.std()+1e-5)
         image[i, ...] = img  
 
     return image
 
-#---------------------------------------------------
 
-def load_config(file_path):
-    return yaml.safe_load(open(file_path, 'r'))
-
-def save_ckp(state, is_best, save_model_dir, best_dir, name):
-    f_path = os.path.join(save_model_dir, '{}_model_ckp.pth.tar'.format(name))
-    torch.save(state, f_path)
-    if is_best:
-        best_path = os.path.join(best_dir, '{}_best_model.pth.tar'.format(name))
-        shutil.copyfile(f_path, best_path)
-
-
-def load_ckp(checkpoint_fpath, model, optimizer, scheduler):
-    checkpoint = torch.load(checkpoint_fpath)
-    model.load_state_dict(checkpoint['model_state_dict'])
-    optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-    scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
-
-    return model, optimizer, scheduler, checkpoint['epoch'], checkpoint['min_loss'], checkpoint['loss']
-
+############
+### plot ###
+############
 
 def loss_plot(train_info_file, name):
 
@@ -248,7 +258,6 @@ def loss_plot(train_info_file, name):
 
     plt.xlabel('epochs')
     plt.ylabel('acc')
-
     # time_stamp = os.path.basename(train_info_file).split('.')[0]
     plt.savefig(os.path.join(os.path.dirname(train_info_file), '{}_loss_acc_plot.png'.format(name)))
     # plt.show()
