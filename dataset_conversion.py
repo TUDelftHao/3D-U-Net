@@ -244,17 +244,21 @@ class ElasticDeformation:
         image, seg = sample['image'], sample['seg']
         channel, z, y, x = image.shape
 
-        dz, dy, dx = [
-            ndimage.gaussian_filter(np.random.random(*image.shape[:-3]), self.sigma, mode='reflect') * self.alpha for _ in range(3)
-        ]
+        coordinates = np.meshgrid(np.arange(z), np.arange(y), np.arange(x), indexing='ij')
+        xi = np.meshgrid(np.linspace(0, 2, z), np.linspace(0, 2, y), np.linspace(0, 2, x), indexing='ij') 
+        grid = [3]*3
 
-        z, y, x = np.meshgrid(np.arange(z), np.arange(y), np.arange(x), indexing='ij')
-        indices = z + dz, y + dy, x + dx 
+        for i in range(3):
+            yi = np.random.randn(*grid)*self.sigma
+            y = ndimage.map_coordinates(yi, xi, order=self.spline_order).reshape(image.shape[-3:])
+            coordinates[i] = np.add(coordinates[i], y)
 
-        deformed = [ndimage.map_coordinates(i, indices, order=self.spline_order, mode='reflect') for i in channel]
-        deformed = np.stack(deformed, axis=0)
+        for i in range(channel):
+            ndimage.map_coordinates(image[i], coordinates, order=self.spline_order).reshape(image.shape[-3:])
+            
+        ndimage.map_coordinates(seg, coordinates, order=0).reshape(seg.shape)
 
-        return {'image':deformed, 'seg': seg}   
+        return {'image':image, 'seg': seg}   
             
 class RandomCrop:
 
@@ -378,7 +382,6 @@ class data_loader:
         self.crop_size = crop_size
         self.overlap_size = overlap_size
         self.form = form
-        self.crop_method = RandomCrop(crop_size=self.crop_size)
 
         self.df = data_obtain(data_content, key=self.key, form=self.form)
 
@@ -387,7 +390,7 @@ class data_loader:
             transform=transforms.Compose([
                 RandomRotation(),
                 ElasticDeformation(),
-                self.crop_method,
+                RandomCrop(crop_size=self.crop_size),
                 RandomContrast(),
                 RandomGaussianNoise(),
                 Normalize(),
@@ -397,7 +400,7 @@ class data_loader:
         elif self.key == 'val':
             self.bratsdata = self.dataset(self.df, 
             transform=transforms.Compose([
-                self.crop_method,
+                RandomCrop(crop_size=self.crop_size),
                 Normalize(),
                 ToTensor()
             ]))
