@@ -231,7 +231,30 @@ class RandomContrast:
 
         return {'image': adjusted_image, 'seg':seg}
 
-        
+class ElasticDeformation:
+    
+    def __init__(self, spline_order=3, alpha=2000, sigma=50):
+
+        self.spline_order = spline_order
+        self.alpha = alpha
+        self.sigma = sigma
+
+    def __call__(self, sample):
+
+        image, seg = sample['image'], sample['seg']
+        channel, z, y, x = image.shape
+
+        dz, dy, dx = [
+            ndimage.gaussian_filter(np.random.random(*image.shape[:-3]), self.sigma, mode='reflect') * self.alpha for _ in range(3)
+        ]
+
+        z, y, x = np.meshgrid(np.arange(z), np.arange(y), np.arange(x), indexing='ij')
+        indices = z + dz, y + dy, x + dx 
+
+        deformed = [ndimage.map_coordinates(i, indices, order=self.spline_order, mode='reflect') for i in channel]
+        deformed = np.stack(deformed, axis=0)
+
+        return {'image':deformed, 'seg': seg}   
             
 class RandomCrop:
 
@@ -363,6 +386,7 @@ class data_loader:
             self.bratsdata = self.dataset(self.df, 
             transform=transforms.Compose([
                 RandomRotation(),
+                ElasticDeformation(),
                 self.crop_method,
                 RandomContrast(),
                 RandomGaussianNoise(),
@@ -423,8 +447,6 @@ if __name__ == '__main__':
 
     data = data_loader(data_content, crop_size=98, batch_size=2, key='val', form='LGG')
     
-
-
     for _ in range(3):
         dataloader = data.load()
         for i, sample_batch in enumerate(dataloader):
@@ -436,7 +458,7 @@ if __name__ == '__main__':
                 seg = sample_batch['seg'][0].cpu()
                 
                 # print('Image average intensities: {}, labels: {}'.format(np.unique(image), np.unique(seg)))
-                # show_imageXY(image, seg)
+                show_imageXY(image, seg)
             else:
                 break
     
